@@ -1,0 +1,5 @@
+{
+	"Name" : "OS version",
+	"Cmd" : "uname -a",
+	"URL" : "/uname"
+}
