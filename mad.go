@@ -15,8 +15,10 @@ import (
 	"fmt"
 	"io"
 	"log"
-	_ "net/http"
+	"net/http"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 type ConfigEntry struct {
@@ -32,6 +34,7 @@ func (entry ConfigEntry) String() string {
 
 var (
 	ConfigPath string
+	Port       int
 	Config     []ConfigEntry
 )
 
@@ -50,8 +53,25 @@ func parseConfig(f *os.File) {
 	}
 }
 
+func httpHandler(w http.ResponseWriter, r *http.Request) {
+	for _, entry := range Config {
+		if entry.URL == r.URL.Path {
+			// execute command
+			cmd := strings.Split(entry.Cmd, " ")
+			if out, err := exec.Command(cmd[0], cmd[1:]...).Output(); err == nil {
+				fmt.Fprintln(w, string(out));
+			} else {
+				fmt.Fprintf(w, "Error executing command %s: %v\n", entry.Cmd, err)
+			}
+			return
+		}
+	}
+	fmt.Fprintf(w, "Unknown command")
+}
+
 func main() {
 	flag.StringVar(&ConfigPath, "config", "/etc/mad.json", "Path to confg file")
+	flag.IntVar(&Port, "port", 8080, "Server port")
 	flag.Parse()
 	log.Printf("Config path: %s", ConfigPath)
 
@@ -60,4 +80,6 @@ func main() {
 	} else {
 		parseConfig(f)
 	}
+	http.HandleFunc("/", httpHandler)
+	http.ListenAndServe(fmt.Sprintf(":%d", Port), nil)
 }
