@@ -8,3 +8,8 @@
 	"Cmd" : "uptime",
 	"URL" : "/os/uptime"
 }
+{
+	"Name" : "OS vmstat",
+	"Cmd" : "vmstat",
+	"URL" : "/os/vmstat"
+}

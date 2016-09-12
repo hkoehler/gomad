@@ -17,8 +17,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
-	"strings"
 )
 
 type ConfigEntry struct {
@@ -27,18 +25,25 @@ type ConfigEntry struct {
 	URL  string
 }
 
+var (
+	ConfigPath string
+	Port       int
+	Registry   = make(map[string]RegistryEntry)
+)
+
 func (entry ConfigEntry) String() string {
 	return fmt.Sprintf("(Name: \"%s\", Command: \"%s\", URL: \"%s\")",
 		entry.Name, entry.Cmd, entry.URL)
 }
 
-var (
-	ConfigPath string
-	Port       int
-	Config     []ConfigEntry
-)
+// register handler
+func registerHandler(entry RegistryEntry) {
+	Registry[entry.Path()] = entry
+	http.Handle(entry.Path(), entry)
+}
 
-func parseConfig(f *os.File) {
+// create HTTP handlers from config
+func loadConfig(f *os.File) {
 	dec := json.NewDecoder(f)
 	for {
 		var entry ConfigEntry
@@ -49,24 +54,25 @@ func parseConfig(f *os.File) {
 			log.Fatal(err)
 		}
 		log.Println(entry)
-		Config = append(Config, entry)
+		handler := NewCommandHandler(entry)
+		registerHandler(handler)
 	}
 }
 
-func httpHandler(w http.ResponseWriter, r *http.Request) {
-	for _, entry := range Config {
-		if entry.URL == r.URL.Path {
-			// execute command
-			cmd := strings.Split(entry.Cmd, " ")
-			if out, err := exec.Command(cmd[0], cmd[1:]...).Output(); err == nil {
-				fmt.Fprintln(w, string(out));
-			} else {
-				fmt.Fprintf(w, "Error executing command %s: %v\n", entry.Cmd, err)
-			}
-			return
-		}
+// root handler listing all other handlers
+func rootHandler(w http.ResponseWriter, req *http.Request) {
+	fmt.Fprintf(w, "<html>\n")
+	fmt.Fprintf(w, "<head>\n")
+	fmt.Fprintf(w, "<title> Registered Commands </title>\n")
+	fmt.Fprintf(w, "</head>\n")
+	fmt.Fprintf(w, "<body>\n")
+	fmt.Fprintf(w, "<h1> Registered Commands </h1>\n")
+	fmt.Fprintf(w, "<div> </div>\n")
+	for path, entry := range Registry {
+		fmt.Fprintf(w, "<a href=\"%s\"> %s </a> <br>\n", path, entry.Name())
 	}
-	fmt.Fprintf(w, "Unknown command")
+	fmt.Fprintf(w, "</body>")
+	fmt.Fprintf(w, "</html>")
 }
 
 func main() {
@@ -78,8 +84,12 @@ func main() {
 	if f, err := os.Open(ConfigPath); err != nil {
 		log.Fatal(err)
 	} else {
-		parseConfig(f)
+		loadConfig(f)
+		configHandler := NewConfigHandler("/config", ConfigPath)
+		registerHandler(configHandler)
 	}
-	http.HandleFunc("/", httpHandler)
-	http.ListenAndServe(fmt.Sprintf(":%d", Port), nil)
+	http.HandleFunc("/", rootHandler)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", Port), nil); err != nil {
+		log.Fatal(err)
+	}
 }
