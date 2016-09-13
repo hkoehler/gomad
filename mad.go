@@ -14,36 +14,36 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	_ "io"
 	"log"
 	"net/http"
 	"os"
 )
 
 type HandlerConfig struct {
+	Type string
 	Name string
 	Cmd  string
 	URL  string
 }
 
 type Config struct {
-	Port int	// TCP port for HTTP service
+	Port     int // TCP port for HTTP service
 	Handlers []*HandlerConfig
 }
 
 var (
 	ConfigPath string
 	Port       int
-	Registry   = make(map[string]RegistryEntry)
+	Registry   = make(map[string]Handler)
 )
 
-func (entry HandlerConfig) String() string {
-	return fmt.Sprintf("(Name: \"%s\", Command: \"%s\", URL: \"%s\")",
-		entry.Name, entry.Cmd, entry.URL)
+func (conf HandlerConfig) String() string {
+	return fmt.Sprintf("Handler(Name: \"%s\", Type: \"%s\", Command: \"%s\", URL: \"%s\")",
+		conf.Name, conf.Type, conf.Cmd, conf.URL)
 }
 
 // register handler
-func registerHandler(entry RegistryEntry) {
+func registerHandler(entry Handler) {
 	Registry[entry.Path()] = entry
 	http.Handle(entry.Path(), entry)
 }
@@ -51,12 +51,12 @@ func registerHandler(entry RegistryEntry) {
 // create HTTP handlers from config
 func loadConfig(f *os.File) {
 	var config Config
-	
+
 	dec := json.NewDecoder(f)
 	if err := dec.Decode(&config); err != nil {
 		log.Fatal(err)
 	}
-	
+
 	if config.Port != 0 {
 		Port = config.Port
 		log.Printf("Port: %d\n", Port)
@@ -64,7 +64,7 @@ func loadConfig(f *os.File) {
 	for _, handlerConf := range config.Handlers {
 		log.Println(handlerConf)
 		handler := NewCommandHandler(*handlerConf)
-		registerHandler(handler)		
+		registerHandler(handler)
 	}
 }
 
@@ -74,7 +74,7 @@ func rootHandler(w http.ResponseWriter, req *http.Request) {
 		Path, Name string
 	}
 
-	entries := make([]Entry, 0)
+	entries := make([]Entry, 0, len(Registry))
 	for path, entry := range Registry {
 		entries = append(entries, Entry{path, entry.Name()})
 	}
@@ -87,8 +87,7 @@ func rootHandler(w http.ResponseWriter, req *http.Request) {
 			<body>
 				<h1> Registered Commands </h1>
 				<div> </div>
-				{{range .}}
-				<a href="{{.Path}}"> {{.Name}} </a> <br>
+				{{range .}} <a href="{{.Path}}"> {{.Name}} </a> <br>
 				{{end}}
 			</body>
 		</html>

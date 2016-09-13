@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,35 +12,44 @@ import (
 )
 
 // Registry entry is HTTP handler with path
-type RegistryEntry interface {
+type Handler interface {
 	http.Handler
 	Path() string
 	Name() string
 }
 
 // Common implementation of registry entry for commands
-type RegistryEntryImpl struct {
+type HandlerImpl struct {
 	path string
 	name string
 }
 
-func (entry RegistryEntryImpl) Path() string {
+func (entry HandlerImpl) Path() string {
 	return entry.path
 }
 
-func (entry RegistryEntryImpl) Name() string {
+func (entry HandlerImpl) Name() string {
 	return entry.name
 }
 
 // HTTP handler executing command line
 type CommandHandler struct {
-	RegistryEntryImpl
+	HandlerImpl
 	CmdLine string
 }
 
-func NewCommandHandler(entry HandlerConfig) *CommandHandler {
-	return &CommandHandler{RegistryEntryImpl: RegistryEntryImpl{entry.URL, entry.Name},
-		CmdLine: entry.Cmd}
+func NewCommandHandler(conf HandlerConfig) Handler {
+	if conf.Type == "" {
+		conf.Type = "command"
+	}
+	switch strings.ToLower(conf.Type) {
+	case "command":
+		return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name},
+			CmdLine: conf.Cmd}
+	default:
+		log.Fatal(fmt.Sprintf("Unknown handler type %s", conf.Type))
+	}
+	return nil
 }
 
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -53,12 +63,12 @@ func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 
 // HTTP handler displaying config
 type ConfigHandler struct {
-	RegistryEntryImpl
+	HandlerImpl
 	ConfigPath string
 }
 
-func NewConfigHandler(path string, configPath string) *ConfigHandler {
-	return &ConfigHandler{RegistryEntryImpl: RegistryEntryImpl{path, "Config"},
+func NewConfigHandler(path string, configPath string) Handler {
+	return &ConfigHandler{HandlerImpl: HandlerImpl{path, "Config"},
 		ConfigPath: configPath}
 }
 

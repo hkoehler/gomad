@@ -1,6 +1,7 @@
 {
 	"Port" : 8080,
 	"Handlers" : [{
+	    "Type" : "Command",
 		"Name" : "OS Version",
 		"Cmd" : "uname -a",
 		"URL" : "/os/uname"
