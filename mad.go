@@ -14,16 +14,21 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"io"
+	_ "io"
 	"log"
 	"net/http"
 	"os"
 )
 
-type ConfigEntry struct {
+type HandlerConfig struct {
 	Name string
 	Cmd  string
 	URL  string
+}
+
+type Config struct {
+	Port int	// TCP port for HTTP service
+	Handlers []*HandlerConfig
 }
 
 var (
@@ -32,7 +37,7 @@ var (
 	Registry   = make(map[string]RegistryEntry)
 )
 
-func (entry ConfigEntry) String() string {
+func (entry HandlerConfig) String() string {
 	return fmt.Sprintf("(Name: \"%s\", Command: \"%s\", URL: \"%s\")",
 		entry.Name, entry.Cmd, entry.URL)
 }
@@ -45,18 +50,21 @@ func registerHandler(entry RegistryEntry) {
 
 // create HTTP handlers from config
 func loadConfig(f *os.File) {
+	var config Config
+	
 	dec := json.NewDecoder(f)
-	for {
-		var entry ConfigEntry
-
-		if err := dec.Decode(&entry); err == io.EOF {
-			break
-		} else if err != nil {
-			log.Fatal(err)
-		}
-		log.Println(entry)
-		handler := NewCommandHandler(entry)
-		registerHandler(handler)
+	if err := dec.Decode(&config); err != nil {
+		log.Fatal(err)
+	}
+	
+	if config.Port != 0 {
+		Port = config.Port
+		log.Printf("Port: %d\n", Port)
+	}
+	for _, handlerConf := range config.Handlers {
+		log.Println(handlerConf)
+		handler := NewCommandHandler(*handlerConf)
+		registerHandler(handler)		
 	}
 }
 

@@ -1,26 +1,29 @@
 {
-	"Name" : "OS Version",
-	"Cmd" : "uname -a",
-	"URL" : "/os/uname"
-}
-{
-	"Name" : "OS Uptime",
-	"Cmd" : "uptime",
-	"URL" : "/os/uptime",
-	"foo" : "foo"
-}
-{
-	"Name" : "OS vmstat",
-	"Cmd" : "vmstat",
-	"URL" : "/os/vmstat"
-}
-{
-	"Name" : "OS iostat",
-	"Cmd" : "iostat",
-	"URL" : "/os/iostat"
-}
-{
-	"Name" : "OS Procs",
-	"Cmd" : "ps aux",
-	"URL" : "/os/ps"
+	"Port" : 8080,
+	"Handlers" : [{
+		"Name" : "OS Version",
+		"Cmd" : "uname -a",
+		"URL" : "/os/uname"
+	},
+	{
+		"Name" : "OS Uptime",
+		"Cmd" : "uptime",
+		"URL" : "/os/uptime",
+		"foo" : "foo"
+	},
+	{
+		"Name" : "OS vmstat",
+		"Cmd" : "vmstat",
+		"URL" : "/os/vmstat"
+	},
+	{
+		"Name" : "OS iostat",
+		"Cmd" : "iostat",
+		"URL" : "/os/iostat"
+	},
+	{
+		"Name" : "OS Procs",
+		"Cmd" : "ps aux",
+		"URL" : "/os/ps"
+	}]
 }

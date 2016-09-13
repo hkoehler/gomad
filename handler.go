@@ -37,7 +37,7 @@ type CommandHandler struct {
 	CmdLine string
 }
 
-func NewCommandHandler(entry ConfigEntry) *CommandHandler {
+func NewCommandHandler(entry HandlerConfig) *CommandHandler {
 	return &CommandHandler{RegistryEntryImpl: RegistryEntryImpl{entry.URL, entry.Name},
 		CmdLine: entry.Cmd}
 }
