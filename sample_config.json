@@ -6,10 +6,21 @@
 {
 	"Name" : "OS Uptime",
 	"Cmd" : "uptime",
-	"URL" : "/os/uptime"
+	"URL" : "/os/uptime",
+	"foo" : "foo"
 }
 {
 	"Name" : "OS vmstat",
 	"Cmd" : "vmstat",
 	"URL" : "/os/vmstat"
+}
+{
+	"Name" : "OS iostat",
+	"Cmd" : "iostat",
+	"URL" : "/os/iostat"
+}
+{
+	"Name" : "OS Procs",
+	"Cmd" : "ps aux",
+	"URL" : "/os/ps"
 }

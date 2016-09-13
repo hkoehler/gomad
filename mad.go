@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -61,18 +62,34 @@ func loadConfig(f *os.File) {
 
 // root handler listing all other handlers
 func rootHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Fprintf(w, "<html>\n")
-	fmt.Fprintf(w, "<head>\n")
-	fmt.Fprintf(w, "<title> Registered Commands </title>\n")
-	fmt.Fprintf(w, "</head>\n")
-	fmt.Fprintf(w, "<body>\n")
-	fmt.Fprintf(w, "<h1> Registered Commands </h1>\n")
-	fmt.Fprintf(w, "<div> </div>\n")
-	for path, entry := range Registry {
-		fmt.Fprintf(w, "<a href=\"%s\"> %s </a> <br>\n", path, entry.Name())
+	type Entry struct {
+		Path, Name string
 	}
-	fmt.Fprintf(w, "</body>")
-	fmt.Fprintf(w, "</html>")
+
+	entries := make([]Entry, 0)
+	for path, entry := range Registry {
+		entries = append(entries, Entry{path, entry.Name()})
+	}
+
+	const tmplStr = `
+		<html>
+			<head>
+			<title> Registered Commands </title>
+			</head>
+			<body>
+				<h1> Registered Commands </h1>
+				<div> </div>
+				{{range .}}
+				<a href="{{.Path}}"> {{.Name}} </a> <br>
+				{{end}}
+			</body>
+		</html>
+	`
+	if tmpl, err := template.New("index").Parse(tmplStr); err != nil {
+		log.Fatal(err)
+	} else if err := tmpl.Execute(w, entries); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {
