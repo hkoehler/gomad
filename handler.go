@@ -1,19 +1,24 @@
+// Copyright (C) 2016, Heiko Koehler
 // define different kinds of HTTP request handlers
 package main
 
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+	"regexp"
+	"errors"
+	_ "log"
 )
 
 // Registry entry is HTTP handler with path
 type Handler interface {
 	http.Handler
+	// return raw and key-val/parsed output
+	Stat() (string, map[string]string)
 	Path() string
 	Name() string
 }
@@ -36,29 +41,54 @@ func (entry HandlerImpl) Name() string {
 type CommandHandler struct {
 	HandlerImpl
 	CmdLine string
+	Regex *regexp.Regexp
+	Submatches []string
 }
 
-func NewCommandHandler(conf HandlerConfig) Handler {
+func NewCommandHandler(conf HandlerConfig) (Handler, error) {
+	if re, err := regexp.Compile(conf.Regex); err != nil {
+		return nil, err
+	} else {
+		return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name},
+			CmdLine: conf.Cmd, Regex : re, Submatches : conf.Submatches}, nil
+	}
+}
+
+func NewHandler(conf HandlerConfig) (Handler, error) {
 	if conf.Type == "" {
 		conf.Type = "command"
 	}
 	switch strings.ToLower(conf.Type) {
 	case "command":
-		return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name},
-			CmdLine: conf.Cmd}
-	default:
-		log.Fatal(fmt.Sprintf("Unknown handler type %s", conf.Type))
+		return NewCommandHandler(conf)
 	}
-	return nil
+	return nil, errors.New(fmt.Sprintf("Unknown handler type %s", conf.Type))
+}
+
+func (handler CommandHandler) Stat() (string, map[string]string) {
+	cmd := strings.Split(handler.CmdLine, " ")
+	if cmdOut, err := exec.Command(cmd[0], cmd[1:]...).Output(); err == nil {
+		var attrs map[string]string
+		
+		out := string(cmdOut)
+		out += "\n"
+		if handler.Regex.MatchString(out) {
+			attrs := handler.Regex.FindStringSubmatch(out)
+			attrs = attrs[1:]
+			for i, m := range attrs {
+				out += fmt.Sprintf("\"%s\" = \"%s\"\n", handler.Submatches[i], m)
+			}
+		}
+		return out, attrs
+	} else {
+		return fmt.Sprintf("Error executing command line \"%s\": %v\n", handler.CmdLine, err), nil
+	}
 }
 
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	cmd := strings.Split(handler.CmdLine, " ")
-	if out, err := exec.Command(cmd[0], cmd[1:]...).Output(); err == nil {
-		fmt.Fprint(w, string(out))
-	} else {
-		fmt.Fprintf(w, "Error executing command line \"%s\": %v\n", handler.CmdLine, err)
-	}
+	out, attrs := handler.Stat()
+	_ = attrs
+	fmt.Fprint(w, out)
 }
 
 // HTTP handler displaying config
@@ -70,6 +100,10 @@ type ConfigHandler struct {
 func NewConfigHandler(path string, configPath string) Handler {
 	return &ConfigHandler{HandlerImpl: HandlerImpl{path, "Config"},
 		ConfigPath: configPath}
+}
+
+func (handler ConfigHandler) Stat() (string, map[string]string) {
+	return "", map[string]string{}
 }
 
 func (handler ConfigHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {

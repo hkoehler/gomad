@@ -24,6 +24,8 @@ type HandlerConfig struct {
 	Name string
 	Cmd  string
 	URL  string
+	Regex string
+	Submatches []string
 }
 
 type Config struct {
@@ -63,8 +65,11 @@ func loadConfig(f *os.File) {
 	}
 	for _, handlerConf := range config.Handlers {
 		log.Println(handlerConf)
-		handler := NewCommandHandler(*handlerConf)
-		registerHandler(handler)
+		if handler, err := NewHandler(*handlerConf); err == nil {
+			registerHandler(handler)
+		} else {
+			log.Fatal(err)
+		}
 	}
 }
 
