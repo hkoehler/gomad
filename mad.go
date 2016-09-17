@@ -19,15 +19,6 @@ import (
 	"os"
 )
 
-type HandlerConfig struct {
-	Type string
-	Name string
-	Cmd  string
-	URL  string
-	Regex string
-	Submatches []string
-}
-
 type Config struct {
 	Port     int // TCP port for HTTP service
 	Handlers []*HandlerConfig

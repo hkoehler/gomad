@@ -14,6 +14,15 @@ import (
 	_ "log"
 )
 
+type HandlerConfig struct {
+	Type string
+	Name string
+	Cmd  string
+	URL  string
+	Regex string
+	Submatches []string
+}
+
 // Registry entry is HTTP handler with path
 type Handler interface {
 	http.Handler
