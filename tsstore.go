@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"errors"
+	"path/filepath"
 	"time"
 )
 
@@ -83,39 +85,107 @@ func (log *TimeSeriesLog) Remove() {
 }
 
 // time series of data points recorded at same frequency
+// data series is partitioned into multiple log to allow for fast deletion
+// of expired data points
 type TimeSeries struct {
-	// identifier within time series table
-	ID uint32
+	// base path of all log files
+	Path string
 	// how many data points to coalesce on roll-up
 	RollUp uint32
 	// min number of data points preserved
+	// this is also the max. number of data points returned by ReadAll
 	Cap uint32
 	// number of data points
 	Len uint32
+	// list of log files in chronological order, i.e. last is current
+	Logs []*TimeSeriesLog
 }
 
-func NewTimeSeries(id uint32, rollUp uint32, capacity uint32) TimeSeries {
-	return TimeSeries{ID: id, RollUp: rollUp, Cap: capacity}
+// open all exisiting time series log files
+func NewTimeSeries(path string, rollUp uint32, capacity uint32) (*TimeSeries, error) {
+	var count uint32
+	var logs = make([]*TimeSeriesLog, 0)
+
+	if fi, err := os.Stat(path); err == nil {
+		// directory exists already
+		if fi.Mode().IsDir() == false {
+			return nil, errors.New("Path not a directory")
+		}
+		if dir, err := os.Open(path); err == nil {
+			for {
+				if fileInfos, err := dir.Readdir(64); err == nil {
+					for _, fi := range fileInfos {
+						filePath := filepath.Join(path, fi.Name())
+						if log, err := NewTimeSeriesLog(filePath); err == nil {
+							/*if data, err := log.ReadAll(); err == nil {
+								count += uint32(len(data))
+							} else {
+								return nil, err
+							}*/
+							logs = append(logs, log)
+						} else {
+							return nil, err
+						}
+					}
+				} else if err == io.EOF {
+					break
+				} else {
+					return nil, err
+				}
+			}
+		} else {
+			return nil, err
+		}
+	} else if err != os.ErrNotExist {
+		// create directory
+		os.MkdirAll(path, 0770)
+	} else {
+		return nil, err
+	}
+
+	return &TimeSeries{Path: path, RollUp: rollUp, Cap: capacity, Len: count, Logs: logs}, nil
 }
 
 // add data point with current time stamp to table
-func (ts *TimeSeries) Add(val float64) {
+func (ts *TimeSeries) Add(val float64) error {
+	var currLog *TimeSeriesLog
+	
+	if len(ts.Logs) == 0 {
+		path := filepath.Join(ts.Path, fmt.Sprintf("%x", time.Now().Unix()))
+		if log, err := NewTimeSeriesLog(path); err == nil {
+			ts.Logs = append(ts.Logs, log)
+			currLog = log
+		} else {
+			return err
+		}
+	} else {
+		currLog = ts.Logs[len(ts.Logs)-1]
+	}
+	currLog.Add(val)
 	ts.Len++
+	return nil
 }
 
-// return cursor at beginning of time series
-func (ts *TimeSeries) Begin() int {
-	return 0
+// read up to "Cap" data points
+func (ts *TimeSeries) ReadAll() ([]DataPoint, error) {
+	var data = make([]DataPoint, 0)
+	
+	for _, log := range ts.Logs {
+		// XXX sort by name
+		if tmp, err := log.ReadAll(); err == nil {
+			data = append(data, tmp...)
+		} else {
+			return nil, err
+		}
+	}
+	return data, nil
 }
 
-// advance cursor by one data point
-func (ts *TimeSeries) Next(cursor int) int {
-	return cursor + 1
-}
-
-// return cursor at end of time series
-func (ts *TimeSeries) End() int {
-	return -1
+// close table including all log files
+func (ts *TimeSeries) Close() {
+	for _, log := range ts.Logs {
+		log.Close()
+	}
 }
 
 // time series table
@@ -125,7 +195,7 @@ type TimeSeriesTable struct {
 	// name of table
 	Name string
 	// time series ordered by granularity from higher to lower
-	TS []TimeSeries
+	TS []*TimeSeries
 }
 
 // record new data point at current time
@@ -143,10 +213,14 @@ type TimeSeriesProps struct {
 }
 
 func NewTimeSeriesTable(path string, name string, tsProps []TimeSeriesProps) (*TimeSeriesTable, error) {
-	tbl := &TimeSeriesTable{Path: path, Name: name, TS: make([]TimeSeries, 0, len(tsProps))}
+	tbl := &TimeSeriesTable{Path: path, Name: name, TS: make([]*TimeSeries, 0, len(tsProps))}
 	for id, prop := range tsProps {
-		ts := NewTimeSeries(uint32(id), prop.RollUp, prop.Cap)
-		tbl.TS = append(tbl.TS, ts)
+		tsPath := filepath.Join(path, string(id))
+		if ts, err := NewTimeSeries(tsPath, prop.RollUp, prop.Cap); err == nil {
+			tbl.TS = append(tbl.TS, ts)
+		} else {
+			return nil, err
+		}
 	}
 	return tbl, nil
 }

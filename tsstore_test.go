@@ -12,8 +12,10 @@ func TestMarshalling(t *testing.T) {
 	var dp2 DataPoint
 	var dp = DataPoint{time.Now(), 0xdeadbeef}
 	var path = filepath.Join(os.TempDir(), "TestMarshalling.gob")
+	
+	defer os.Remove(path)
 
-	if file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0x666); err != nil {
+	if file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0666); err != nil {
 		t.Fatal(err)
 	} else {
 		defer file.Close()
@@ -66,5 +68,22 @@ func TestTimeSeriesLog(t *testing.T) {
 				t.Fatalf("Expected val = %d got %d\n", i, data[i].Val)
 			}
 		}
+	}
+}
+
+func TestTimeSeries(t *testing.T) {
+	path := filepath.Join(os.TempDir(), "TestTimeSeries")
+	
+	if ts, err := NewTimeSeries(path, 10, 1000); err == nil {
+		defer ts.Close()
+		
+		if err := ts.Add(0); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ts.ReadAll(); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		t.Fatal(err)
 	}
 }
