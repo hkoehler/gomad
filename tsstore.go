@@ -111,10 +111,20 @@ type TimeSeries struct {
 	NextID int
 	// list of log files in chronological order, i.e. last is current
 	Logs []*TimeSeriesLog
+
+	// lower-level time series
+	LowerLevel *TimeSeries
+	// number of values in current coalescing/roll-up batch
+	// can never be greater than RollUp
+	BatchLen int
+	// cumulative value of all elements in batch
+	BatchVal float64
 }
 
 // open all exisiting time series log files
-func NewTimeSeries(path string, rollUp uint32, capacity uint32) (*TimeSeries, error) {
+func NewTimeSeries(path string, rollUp uint32,
+	capacity uint32, lowerLevel *TimeSeries) (*TimeSeries, error) {
+
 	var count uint32
 	var logs = make([]*TimeSeriesLog, 0)
 
@@ -164,7 +174,7 @@ func NewTimeSeries(path string, rollUp uint32, capacity uint32) (*TimeSeries, er
 		fmt.Sscanf(currLogName, "%d", &nextID)
 	}
 	return &TimeSeries{Path: path, RollUp: rollUp, Cap: capacity,
-		Len: count, Logs: logs, NextID: nextID}, nil
+		Len: count, Logs: logs, NextID: nextID, LowerLevel: lowerLevel}, nil
 }
 
 // calculate max size of a log file
@@ -200,6 +210,18 @@ func (ts *TimeSeries) Add(val float64) error {
 	}
 	currLog.Add(val)
 	ts.Len++
+
+	// coalesce current batch into single value for lower TS level with lower granularity
+	if ts.LowerLevel != nil {
+		ts.BatchVal += float64(val)
+		ts.BatchLen++
+		if ts.BatchLen == int(ts.RollUp) {
+			err := ts.LowerLevel.Add(ts.BatchVal / float64(ts.BatchLen))
+			ts.BatchVal = 0
+			ts.BatchLen = 0
+			return err
+		}
+	}
 	return nil
 }
 
@@ -252,7 +274,7 @@ func NewTimeSeriesTable(path string, name string, tsProps []TimeSeriesProps) (*T
 	tbl := &TimeSeriesTable{Path: path, Name: name, TS: make([]*TimeSeries, 0, len(tsProps))}
 	for id, prop := range tsProps {
 		tsPath := filepath.Join(path, string(id))
-		if ts, err := NewTimeSeries(tsPath, prop.RollUp, prop.Cap); err == nil {
+		if ts, err := NewTimeSeries(tsPath, prop.RollUp, prop.Cap, nil); err == nil {
 			tbl.TS = append(tbl.TS, ts)
 		} else {
 			return nil, err

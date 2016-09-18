@@ -71,10 +71,26 @@ func TestTimeSeriesLog(t *testing.T) {
 	}
 }
 
+func validateTimeSeries(t *testing.T, ts *TimeSeries, expLen int, expIncr float64) {
+	if data, err := ts.ReadAll(); err != nil {
+		t.Fatal(err)
+	} else {
+		if len(data) < expLen {
+			t.Fatalf("only %d data points read", len(data))
+		}
+		for i := 1; i < expLen; i++ {
+			if data[i].Val != data[i-1].Val+expIncr {
+				t.Fatalf("read %d at %d (expected %d) in ts %s",
+					int(data[i].Val), i, int(data[i-1].Val+expIncr), ts.Path)
+			}
+		}
+	}
+}
+
 func TestTimeSeries(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "TestTimeSeries")
 
-	if ts, err := NewTimeSeries(path, 10, 100); err == nil {
+	if ts, err := NewTimeSeries(path, 10, 100, nil); err == nil {
 		defer ts.Close()
 
 		for i := 0; i < 200; i++ {
@@ -82,20 +98,42 @@ func TestTimeSeries(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if data, err := ts.ReadAll(); err != nil {
-			t.Fatal(err)
-		} else {
-			if len(data) < 100 {
-				t.Fatalf("only %d data points read", len(data))
-			}
-			for i := 1; i < 100; i++ {
-				if data[i].Val != data[i-1].Val+1 {
-					t.Fatalf("read %d at %d (expected %d)",
-						int(data[i].Val), i, int(data[i-1].Val+1))
-				}
-			}
-		}
+		validateTimeSeries(t, ts, 100, 1)
 	} else {
 		t.Fatal(err)
 	}
+}
+
+func TestCoalescing(t *testing.T) {
+	var ts1, ts2 *TimeSeries
+	var err error
+
+	defer func() {
+		if ts1 != nil {
+			ts1.Close()
+		}
+		if ts2 != nil {
+			ts2.Close()
+		}
+	}()
+
+	tsPath1 := filepath.Join(os.TempDir(), "TestCoalescing", "ts1")
+	tsPath2 := filepath.Join(os.TempDir(), "TestCoalescing", "ts2")
+
+	if ts2, err = NewTimeSeries(tsPath2, 10, 100, nil); err != nil {
+		t.Fatal(err)
+	}
+	// use ts2 as lower level for ts1
+	if ts1, err = NewTimeSeries(tsPath1, 10, 100, ts2); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 200; i++ {
+		if err := ts1.Add(float64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	validateTimeSeries(t, ts1, 100, 1)
+	validateTimeSeries(t, ts2, 10, 10)
 }
