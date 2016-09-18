@@ -246,21 +246,19 @@ func (ts *TimeSeries) Close() {
 	}
 }
 
+// remove table including all log files
+func (ts *TimeSeries) Remove() {
+	for _, log := range ts.Logs {
+		log.Remove()
+	}
+}
+
 // time series table
 type TimeSeriesTable struct {
 	// base path to all time series data files
 	Path string
-	// name of table
-	Name string
-	// time series ordered by granularity from higher to lower
+	// time series ordered by granularity from lower to higher
 	TS []*TimeSeries
-}
-
-// record new data point at current time
-// this might trigger multiple previous data points to be rolled up into single data point
-// previous data points are deleted in batches for sake of efficiency
-func (tbl *TimeSeriesTable) Add(val float64) {
-
 }
 
 type TimeSeriesProps struct {
@@ -270,15 +268,53 @@ type TimeSeriesProps struct {
 	Cap uint32
 }
 
-func NewTimeSeriesTable(path string, name string, tsProps []TimeSeriesProps) (*TimeSeriesTable, error) {
-	tbl := &TimeSeriesTable{Path: path, Name: name, TS: make([]*TimeSeries, 0, len(tsProps))}
-	for id, prop := range tsProps {
-		tsPath := filepath.Join(path, string(id))
-		if ts, err := NewTimeSeries(tsPath, prop.RollUp, prop.Cap, nil); err == nil {
-			tbl.TS = append(tbl.TS, ts)
+// create local time series with different levels of granularities as specified in tsProps
+func NewTimeSeriesTable(path string, tsProps []TimeSeriesProps) (*TimeSeriesTable, error) {
+	var tsList = make([]*TimeSeries, 0)
+	var prevTS *TimeSeries
+	
+	if len(tsProps) == 0 {
+		return nil, errors.New("No time series specified on any level")
+	}
+	
+	fmt.Println(path)
+	for id := len(tsProps) - 1; id >= 0; id-- {
+		prop := tsProps[id]
+		tsPath := filepath.Join(path, fmt.Sprintf("%d", id))
+		if ts, err := NewTimeSeries(tsPath, prop.RollUp, prop.Cap, prevTS); err == nil {
+			tsList = append(tsList, ts)
+			prevTS = ts
 		} else {
 			return nil, err
 		}
 	}
-	return tbl, nil
+	return &TimeSeriesTable{Path: path, TS: tsList}, nil
+}
+
+// return top level time series
+func (tbl *TimeSeriesTable) TopLevel() *TimeSeries {
+	return tbl.TS[len(tbl.TS)-1]
+}
+
+// record new data point at current time
+// this might trigger multiple previous data points to be rolled up into single data point
+// previous data points are deleted in batches for sake of efficiency
+func (tbl *TimeSeriesTable) Add(val float64) error {
+	ts := tbl.TopLevel()
+	return ts.Add(val)
+}
+
+// close all time series logs
+func (tbl *TimeSeriesTable) Close() {
+	for _, ts := range tbl.TS {
+		ts.Close()
+	}
+}
+
+// remove all time series logs
+func (tbl *TimeSeriesTable) Remove() {
+	for _, ts := range tbl.TS {
+		ts.Remove()
+	}
+	os.RemoveAll(tbl.Path)
 }
