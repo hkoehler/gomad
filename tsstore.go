@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"errors"
+	"sort"
 	"path/filepath"
 	"time"
 )
@@ -56,6 +57,7 @@ func (log *TimeSeriesLog) ReadAll() ([]DataPoint, error) {
 	} else {
 		defer f.Close()
 		dec := gob.NewDecoder(f)
+		
 		for {
 			var dp DataPoint
 
@@ -64,7 +66,8 @@ func (log *TimeSeriesLog) ReadAll() ([]DataPoint, error) {
 			} else if err == io.EOF {
 				break
 			} else {
-				return nil, err
+				// ignore "extra data in buffer" error
+				//return nil, err
 			}
 		}
 	}
@@ -83,6 +86,13 @@ func (log *TimeSeriesLog) Close() {
 func (log *TimeSeriesLog) Remove() {
 	os.Remove(log.path)
 }
+
+type TimeSeriesLogs []*TimeSeriesLog
+
+// implement Sorter interface for time series log arrays
+func (logs TimeSeriesLogs) Len() int { return len(logs) }
+func (logs TimeSeriesLogs) Swap(i, j int) { logs[i], logs[j] = logs[j], logs[i] }
+func (logs TimeSeriesLogs) Less(i, j int) bool { return logs[i].path < logs[j].path }
 
 // time series of data points recorded at same frequency
 // data series is partitioned into multiple log to allow for fast deletion
@@ -117,11 +127,11 @@ func NewTimeSeries(path string, rollUp uint32, capacity uint32) (*TimeSeries, er
 					for _, fi := range fileInfos {
 						filePath := filepath.Join(path, fi.Name())
 						if log, err := NewTimeSeriesLog(filePath); err == nil {
-							/*if data, err := log.ReadAll(); err == nil {
+							if data, err := log.ReadAll(); err == nil {
 								count += uint32(len(data))
 							} else {
 								return nil, err
-							}*/
+							}
 							logs = append(logs, log)
 						} else {
 							return nil, err
@@ -143,6 +153,7 @@ func NewTimeSeries(path string, rollUp uint32, capacity uint32) (*TimeSeries, er
 		return nil, err
 	}
 
+	sort.Sort(TimeSeriesLogs(logs))
 	return &TimeSeries{Path: path, RollUp: rollUp, Cap: capacity, Len: count, Logs: logs}, nil
 }
 
@@ -171,7 +182,6 @@ func (ts *TimeSeries) ReadAll() ([]DataPoint, error) {
 	var data = make([]DataPoint, 0)
 	
 	for _, log := range ts.Logs {
-		// XXX sort by name
 		if tmp, err := log.ReadAll(); err == nil {
 			data = append(data, tmp...)
 		} else {
