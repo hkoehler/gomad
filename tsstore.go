@@ -272,11 +272,11 @@ type TimeSeriesProps struct {
 func NewTimeSeriesTable(path string, tsProps []TimeSeriesProps) (*TimeSeriesTable, error) {
 	var tsList = make([]*TimeSeries, 0)
 	var prevTS *TimeSeries
-	
+
 	if len(tsProps) == 0 {
 		return nil, errors.New("No time series specified on any level")
 	}
-	
+
 	fmt.Println(path)
 	for id := len(tsProps) - 1; id >= 0; id-- {
 		prop := tsProps[id]

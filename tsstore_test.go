@@ -143,7 +143,7 @@ func TestTimeSeriesTable(t *testing.T) {
 	// keep 100 data points on each level, roll up every 10 data points
 	if tbl, err := NewTimeSeriesTable(path, []TimeSeriesProps{{10, 100}, {10, 100}}); err == nil {
 		defer tbl.Remove()
-		
+
 		for i := 0; i < 2000; i++ {
 			if err := tbl.Add(float64(i)); err != nil {
 				t.Fatal(err)
@@ -155,4 +155,3 @@ func TestTimeSeriesTable(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
