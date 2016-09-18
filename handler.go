@@ -168,7 +168,6 @@ func (handler RootHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	entries := make([]Entry, 0, len(Registry))
 	for path, entry := range Registry {
 		entries = append(entries, Entry{path, entry.Name()})
-		log.Println(path)
 	}
 
 	sort.Sort(ByName(entries))

@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 )
+
 type Config struct {
 	Port     int // TCP port for HTTP service
 	Handlers []*HandlerConfig
@@ -37,4 +38,3 @@ func LoadConfig(f *os.File) {
 		}
 	}
 }
-
