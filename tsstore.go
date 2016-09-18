@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"errors"
-	"sort"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -57,7 +57,7 @@ func (log *TimeSeriesLog) ReadAll() ([]DataPoint, error) {
 	} else {
 		defer f.Close()
 		dec := gob.NewDecoder(f)
-		
+
 		for {
 			var dp DataPoint
 
@@ -90,8 +90,8 @@ func (log *TimeSeriesLog) Remove() {
 type TimeSeriesLogs []*TimeSeriesLog
 
 // implement Sorter interface for time series log arrays
-func (logs TimeSeriesLogs) Len() int { return len(logs) }
-func (logs TimeSeriesLogs) Swap(i, j int) { logs[i], logs[j] = logs[j], logs[i] }
+func (logs TimeSeriesLogs) Len() int           { return len(logs) }
+func (logs TimeSeriesLogs) Swap(i, j int)      { logs[i], logs[j] = logs[j], logs[i] }
 func (logs TimeSeriesLogs) Less(i, j int) bool { return logs[i].path < logs[j].path }
 
 // time series of data points recorded at same frequency
@@ -107,6 +107,8 @@ type TimeSeries struct {
 	Cap uint32
 	// number of data points
 	Len uint32
+	// next log ID
+	NextID int
 	// list of log files in chronological order, i.e. last is current
 	Logs []*TimeSeriesLog
 }
@@ -154,18 +156,42 @@ func NewTimeSeries(path string, rollUp uint32, capacity uint32) (*TimeSeries, er
 	}
 
 	sort.Sort(TimeSeriesLogs(logs))
-	return &TimeSeries{Path: path, RollUp: rollUp, Cap: capacity, Len: count, Logs: logs}, nil
+	// retrieve ID of next log file for Add()
+	nextID := 0
+	if len(logs) > 0 {
+		currLog := logs[len(logs)-1]
+		currLogName := filepath.Base(currLog.path)
+		fmt.Sscanf(currLogName, "%d", &nextID)
+	}
+	return &TimeSeries{Path: path, RollUp: rollUp, Cap: capacity,
+		Len: count, Logs: logs, NextID: nextID}, nil
+}
+
+// calculate max size of a log file
+func (ts *TimeSeries) BucketSize() uint32 {
+	return ts.Cap / 2
 }
 
 // add data point with current time stamp to table
 func (ts *TimeSeries) Add(val float64) error {
 	var currLog *TimeSeriesLog
-	
-	if len(ts.Logs) == 0 {
-		path := filepath.Join(ts.Path, fmt.Sprintf("%x", time.Now().Unix()))
+
+	// create new bucket if either bucket is full or no bucket exists yet
+	if ts.Len%ts.BucketSize() == 0 {
+		// bucket size is ts.Cap divided by 2 hence 2 full buckets
+		// are suffient to keep ts.Cap data points
+		if len(ts.Logs) > 2 {
+			oldLogs := ts.Logs[0 : len(ts.Logs)-2]
+			ts.Logs = ts.Logs[len(ts.Logs)-2:]
+			for _, oldLog := range oldLogs {
+				oldLog.Remove()
+			}
+		}
+		path := filepath.Join(ts.Path, fmt.Sprintf("%d", ts.NextID))
 		if log, err := NewTimeSeriesLog(path); err == nil {
 			ts.Logs = append(ts.Logs, log)
 			currLog = log
+			ts.NextID++
 		} else {
 			return err
 		}
@@ -180,7 +206,7 @@ func (ts *TimeSeries) Add(val float64) error {
 // read up to "Cap" data points
 func (ts *TimeSeries) ReadAll() ([]DataPoint, error) {
 	var data = make([]DataPoint, 0)
-	
+
 	for _, log := range ts.Logs {
 		if tmp, err := log.ReadAll(); err == nil {
 			data = append(data, tmp...)

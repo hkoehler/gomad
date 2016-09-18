@@ -12,7 +12,7 @@ func TestMarshalling(t *testing.T) {
 	var dp2 DataPoint
 	var dp = DataPoint{time.Now(), 0xdeadbeef}
 	var path = filepath.Join(os.TempDir(), "TestMarshalling.gob")
-	
+
 	defer os.Remove(path)
 
 	if file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0666); err != nil {
@@ -73,15 +73,27 @@ func TestTimeSeriesLog(t *testing.T) {
 
 func TestTimeSeries(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "TestTimeSeries")
-	
-	if ts, err := NewTimeSeries(path, 10, 1000); err == nil {
+
+	if ts, err := NewTimeSeries(path, 10, 100); err == nil {
 		defer ts.Close()
-		
-		if err := ts.Add(0); err != nil {
-			t.Fatal(err)
+
+		for i := 0; i < 200; i++ {
+			if err := ts.Add(float64(i)); err != nil {
+				t.Fatal(err)
+			}
 		}
-		if _, err := ts.ReadAll(); err != nil {
+		if data, err := ts.ReadAll(); err != nil {
 			t.Fatal(err)
+		} else {
+			if len(data) < 100 {
+				t.Fatalf("only %d data points read", len(data))
+			}
+			for i := 1; i < 100; i++ {
+				if data[i].Val != data[i-1].Val+1 {
+					t.Fatalf("read %d at %d (expected %d)",
+						int(data[i].Val), i, int(data[i-1].Val+1))
+				}
+			}
 		}
 	} else {
 		t.Fatal(err)
