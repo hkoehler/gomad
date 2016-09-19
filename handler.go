@@ -14,23 +14,10 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 var Registry = make(map[string]Handler)
-
-type HandlerConfig struct {
-	Type       string
-	Name       string
-	Cmd        string
-	URL        string
-	Regex      string
-	Submatches []string
-}
-
-func (conf HandlerConfig) String() string {
-	return fmt.Sprintf("Handler(Name: \"%s\", Type: \"%s\", Command: \"%s\", URL: \"%s\")",
-		conf.Name, conf.Type, conf.Cmd, conf.URL)
-}
 
 // Registry entry is HTTP handler with path
 type Handler interface {
@@ -39,12 +26,14 @@ type Handler interface {
 	Stat() (string, map[string]string)
 	Path() string
 	Name() string
+	PollInterval() time.Duration
 }
 
 // Common implementation of registry entry for commands
 type HandlerImpl struct {
 	path string
 	name string
+	pollInterval time.Duration
 }
 
 func (entry HandlerImpl) Path() string {
@@ -53,6 +42,10 @@ func (entry HandlerImpl) Path() string {
 
 func (entry HandlerImpl) Name() string {
 	return entry.name
+}
+
+func (entry HandlerImpl) PollInterval() time.Duration {
+	return entry.pollInterval
 }
 
 // register handler
@@ -64,17 +57,26 @@ func RegisterHandler(entry Handler) {
 // HTTP handler executing command line
 type CommandHandler struct {
 	HandlerImpl
-	CmdLine    string
-	Regex      *regexp.Regexp
-	Submatches []string
+	CmdLine      string
+	Regex        *regexp.Regexp
+	Submatches   []string
 }
 
 func NewCommandHandler(conf HandlerConfig) (Handler, error) {
 	if re, err := regexp.Compile(conf.Regex); err != nil {
 		return nil, err
 	} else {
-		return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name},
-			CmdLine: conf.Cmd, Regex: re, Submatches: conf.Submatches}, nil
+		var pollInterval time.Duration
+		var err error
+
+		if conf.PollInterval != "" {
+			if pollInterval, err = time.ParseDuration(conf.PollInterval); err != nil {
+				return nil, err
+			}
+		}
+		return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name, pollInterval},
+				CmdLine: conf.Cmd, Regex: re, Submatches: conf.Submatches},
+			nil
 	}
 }
 
@@ -92,15 +94,16 @@ func NewHandler(conf HandlerConfig) (Handler, error) {
 func (handler CommandHandler) Stat() (string, map[string]string) {
 	cmd := strings.Split(handler.CmdLine, " ")
 	if cmdOut, err := exec.Command(cmd[0], cmd[1:]...).Output(); err == nil {
-		var attrs map[string]string
+		var attrs = make(map[string]string)
 
 		out := string(cmdOut)
 		out += "\n"
 		if handler.Regex.MatchString(out) {
-			attrs := handler.Regex.FindStringSubmatch(out)
-			attrs = attrs[1:]
-			for i, m := range attrs {
+			subMatches := handler.Regex.FindStringSubmatch(out)
+			subMatches = subMatches[1:]
+			for i, m := range subMatches {
 				out += fmt.Sprintf("\"%s\" = \"%s\"\n", handler.Submatches[i], m)
+				attrs[handler.Submatches[i]] = m
 			}
 		}
 		return out, attrs
@@ -122,7 +125,7 @@ type ConfigHandler struct {
 }
 
 func NewConfigHandler(path string, configPath string) Handler {
-	return &ConfigHandler{HandlerImpl: HandlerImpl{path, "Config"},
+	return &ConfigHandler{HandlerImpl: HandlerImpl{path, "Config", 0},
 		ConfigPath: configPath}
 }
 
@@ -144,7 +147,7 @@ type RootHandler struct {
 }
 
 func NewRootHandler() Handler {
-	return &RootHandler{HandlerImpl: HandlerImpl{"/", "Root"}}
+	return &RootHandler{HandlerImpl: HandlerImpl{"/", "Root", 0}}
 }
 
 func (handler RootHandler) Stat() (string, map[string]string) {

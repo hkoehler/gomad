@@ -141,7 +141,7 @@ func TestCoalescing(t *testing.T) {
 func TestTimeSeriesTable(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "TestTimeSeriesTable")
 	// keep 100 data points on each level, roll up every 10 data points
-	if tbl, err := NewTimeSeriesTable(path, []TimeSeriesProps{{10, 100}, {10, 100}}); err == nil {
+	if tbl, err := NewTimeSeriesTable(path, []TimeSeriesProps{{10, 100}, {10, 100}, {10, 100}}); err == nil {
 		defer tbl.Remove()
 
 		for i := 0; i < 2000; i++ {
@@ -149,8 +149,9 @@ func TestTimeSeriesTable(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		validateTimeSeries(t, tbl.TS[1], 100, 1)
-		validateTimeSeries(t, tbl.TS[0], 100, 10)
+		validateTimeSeries(t, tbl.TS[2], 100, 1)
+		validateTimeSeries(t, tbl.TS[1], 100, 10)
+		validateTimeSeries(t, tbl.TS[0], 20, 100)
 	} else {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 )
@@ -9,6 +10,21 @@ import (
 type Config struct {
 	Port     int // TCP port for HTTP service
 	Handlers []*HandlerConfig
+}
+
+type HandlerConfig struct {
+	Type         string
+	Name         string
+	Cmd          string
+	URL          string
+	Regex        string
+	Submatches   []string
+	PollInterval string
+}
+
+func (conf HandlerConfig) String() string {
+	return fmt.Sprintf("Handler(Name: \"%s\", Type: \"%s\", Command: \"%s\", URL: \"%s\")",
+		conf.Name, conf.Type, conf.Cmd, conf.URL)
 }
 
 var (

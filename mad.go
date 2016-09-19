@@ -32,6 +32,7 @@ func main() {
 		rootHandler := NewRootHandler()
 		RegisterHandler(rootHandler)
 	}
+	StartScheduler()
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", Port), nil); err != nil {
 		log.Fatal(err)
 	}
