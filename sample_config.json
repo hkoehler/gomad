@@ -20,7 +20,10 @@
 		"URL" : "/os/vmstat",
 		"Regex" : "\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\n",
 		"Submatches" : ["user", "system", "idle", "wait", "stolen"],
-		"PollInterval" : "10s"
+		"PollInterval" : "10s",
+		"TimeSeries" : [{"RollUp" : 6, "Capacity" : 100},
+						{"RollUp" : 10, "Capacity" : 100},
+						{"RollUp" : 6, "Capacity" : 100}]
 	},
 	{
 		"Name" : "OS iostat",

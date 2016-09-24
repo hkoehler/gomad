@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -22,8 +23,9 @@ var Registry = make(map[string]Handler)
 // Registry entry is HTTP handler with path
 type Handler interface {
 	http.Handler
-	// return raw and key-val/parsed output
-	Stat() (string, map[string]string)
+	// execute handler
+	// might generate stats and store them in time series logs
+	Execute()
 	Path() string
 	Name() string
 	PollInterval() time.Duration
@@ -31,8 +33,8 @@ type Handler interface {
 
 // Common implementation of registry entry for commands
 type HandlerImpl struct {
-	path string
-	name string
+	path         string
+	name         string
 	pollInterval time.Duration
 }
 
@@ -57,9 +59,11 @@ func RegisterHandler(entry Handler) {
 // HTTP handler executing command line
 type CommandHandler struct {
 	HandlerImpl
-	CmdLine      string
-	Regex        *regexp.Regexp
-	Submatches   []string
+	CmdLine    string
+	Regex      *regexp.Regexp
+	Submatches []string
+	// map properties to time series
+	TS map[string]*TimeSeriesTable
 }
 
 func NewCommandHandler(conf HandlerConfig) (Handler, error) {
@@ -67,6 +71,7 @@ func NewCommandHandler(conf HandlerConfig) (Handler, error) {
 		return nil, err
 	} else {
 		var pollInterval time.Duration
+		var tsMap = make(map[string]*TimeSeriesTable)
 		var err error
 
 		if conf.PollInterval != "" {
@@ -74,8 +79,19 @@ func NewCommandHandler(conf HandlerConfig) (Handler, error) {
 				return nil, err
 			}
 		}
+
+		if conf.TimeSeries != nil {
+			for _, prop := range conf.Submatches {
+				tsPath := filepath.Join(os.TempDir(), "mad", conf.URL, prop)
+				if ts, err := NewTimeSeriesTable(tsPath, conf.TimeSeries); err != nil {
+					return nil, err
+				} else {
+					tsMap[prop] = ts
+				}
+			}
+		}
 		return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name, pollInterval},
-				CmdLine: conf.Cmd, Regex: re, Submatches: conf.Submatches},
+				CmdLine: conf.Cmd, Regex: re, Submatches: conf.Submatches, TS: tsMap},
 			nil
 	}
 }
@@ -112,6 +128,19 @@ func (handler CommandHandler) Stat() (string, map[string]string) {
 	}
 }
 
+// query properties and store them in time series logs
+func (handler CommandHandler) Execute() {
+	_, props := handler.Stat()
+	for key, val := range props {
+		var floatVal float64
+
+		// map property name to time series
+		ts := handler.TS[key]
+		fmt.Sscanf(val, "%f", &floatVal)
+		ts.Add(floatVal)
+	}
+}
+
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	out, attrs := handler.Stat()
 	_ = attrs
@@ -129,8 +158,7 @@ func NewConfigHandler(path string, configPath string) Handler {
 		ConfigPath: configPath}
 }
 
-func (handler ConfigHandler) Stat() (string, map[string]string) {
-	return "", map[string]string{}
+func (handler ConfigHandler) Execute() {
 }
 
 func (handler ConfigHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -150,8 +178,7 @@ func NewRootHandler() Handler {
 	return &RootHandler{HandlerImpl: HandlerImpl{"/", "Root", 0}}
 }
 
-func (handler RootHandler) Stat() (string, map[string]string) {
-	return "", map[string]string{}
+func (handler RootHandler) Execute() {
 }
 
 type Entry struct {

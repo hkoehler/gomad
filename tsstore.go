@@ -267,7 +267,7 @@ type TimeSeriesProps struct {
 	// number of data points to coalesce into single data point on roll-up
 	RollUp uint32
 	// total number of data point to be kept in time series
-	Cap uint32
+	Capacity uint32
 }
 
 // create local time series with different levels of granularities as specified in tsProps
@@ -283,7 +283,7 @@ func NewTimeSeriesTable(path string, tsProps []TimeSeriesProps) (*TimeSeriesTabl
 	for id := len(tsProps) - 1; id >= 0; id-- {
 		prop := tsProps[id]
 		tsPath := filepath.Join(path, fmt.Sprintf("%d", id))
-		if ts, err := NewTimeSeries(tsPath, prop.RollUp, prop.Cap, prevTS); err == nil {
+		if ts, err := NewTimeSeries(tsPath, prop.RollUp, prop.Capacity, prevTS); err == nil {
 			tsList = append(tsList, ts)
 			prevTS = ts
 		} else {

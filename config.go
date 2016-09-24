@@ -22,6 +22,7 @@ type HandlerConfig struct {
 	Regex        string
 	Submatches   []string
 	PollInterval string
+	TimeSeries   []TimeSeriesProps
 }
 
 func (conf HandlerConfig) String() string {

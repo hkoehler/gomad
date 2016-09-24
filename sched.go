@@ -3,8 +3,8 @@
 package main
 
 import (
-	"time"
 	"log"
+	"time"
 )
 
 // schedules timers for executing commands
@@ -16,9 +16,8 @@ func StartScheduler() {
 			// create own copy of handler for go routine
 			handler := handler
 			go func() {
-				for t := range ticker.C {
-					_, attrs := handler.Stat()
-					log.Printf("%s, %s\n", t, attrs)
+				for range ticker.C {
+					handler.Execute()
 				}
 			}()
 		}
