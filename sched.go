@@ -1,3 +1,5 @@
+// Copyright (C) 2016, Heiko Koehler
+
 package main
 
 import (
