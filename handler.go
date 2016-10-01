@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	_ "github.com/wcharczuk/go-chart"
 	"html/template"
 	"io"
 	"log"
@@ -54,6 +55,8 @@ func (entry HandlerImpl) PollInterval() time.Duration {
 func RegisterHandler(entry Handler) {
 	Registry[entry.Path()] = entry
 	http.Handle(entry.Path(), entry)
+	// handle sub pages for generated content
+	http.Handle(entry.Path() + "/", entry)
 }
 
 // HTTP handler executing command line
@@ -113,12 +116,10 @@ func (handler CommandHandler) Stat() (string, map[string]string) {
 		var attrs = make(map[string]string)
 
 		out := string(cmdOut)
-		out += "\n"
 		if handler.Regex.MatchString(out) {
 			subMatches := handler.Regex.FindStringSubmatch(out)
 			subMatches = subMatches[1:]
 			for i, m := range subMatches {
-				out += fmt.Sprintf("\"%s\" = \"%s\"\n", handler.Submatches[i], m)
 				attrs[handler.Submatches[i]] = m
 			}
 		}
@@ -141,10 +142,93 @@ func (handler CommandHandler) Execute() {
 	}
 }
 
+func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
+	fmt.Fprintf(w, "%s\n", prop)
+}
+
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	out, attrs := handler.Stat()
-	_ = attrs
-	fmt.Fprint(w, out)
+
+	type Chart struct {
+		Path     string
+		Property string
+	}
+
+	type Page struct {
+		Cmd             string
+		FirstLine       string
+		AdditionalLines []string
+		Charts          []Chart
+	}
+	
+	if relPath, err := filepath.Rel(handler.Path(), req.URL.Path); err == nil {
+		fmt.Printf("URL=%s, relPath=%s\n", req.URL.Path, relPath)
+		if relPath != "." {
+			handler.ServeChart(w, req, relPath)
+			return
+		}
+	}
+	
+	const tmplStr = `
+		<!DOCTYPE html>
+		<html>
+			<head>
+			<title> {{.Cmd}} </title>
+			</head>
+			<body>
+				<h1 style="text-align:center"> {{.Cmd}} </h1>
+				<table border="line" style="width:100%">
+					<caption> {{.Cmd}} Output </caption>
+					<tr> 
+						<td text-align: left>
+						<code> {{ .FirstLine }} </code>
+						{{range .AdditionalLines}} <br> <code> {{.}} </code> {{end}}
+						</td>
+					</tr>
+				</table>
+				{{range .Charts}}
+				<h2 style="text-align:center"> {{.Property}} </h2>
+				<img src="{{.Path}}" alt="{{.Property}}" style="width:100%"> <br>
+				{{end}}
+			</body>
+		</html>
+	`
+
+	out, props := handler.Stat()
+	charts := make([]Chart, 0)
+	for prop, _ := range props {
+		imgPath := filepath.Join(handler.Path(), prop)
+		charts = append(charts, Chart{Path: imgPath, Property: prop})
+	}
+	lines := strings.Split(out, "\n")
+	page := Page{Cmd: handler.CmdLine,
+		FirstLine: lines[0],
+		Charts:    charts}
+	if len(lines) > 1 {
+		page.AdditionalLines = lines[1:]
+	}
+	if tmpl, err := template.New("command").Parse(tmplStr); err != nil {
+		log.Fatal(err)
+	} else if err := tmpl.Execute(w, page); err != nil {
+		log.Fatal(err)
+	}
+
+	/*fmt.Fprint(w, out)
+	fmt.Fprint(w, "\n")
+	// iterate thru time series associated with properties
+	for key, currVal := range props {
+		fmt.Fprintf(w, "\"%s\"\n", key)
+		tbl := handler.TS[key]
+		// iterate thru all time series levels
+		for i, ts := range tbl.TS {
+			fmt.Fprintf(w, "Level: %d\n", i)
+			if data, err := ts.ReadAll(); err == nil {
+				for _, dp := range data {
+					fmt.Fprintf(w, "\"%v\" = \"%v\"\n", dp.Tstamp, dp.Val)
+				}
+			}
+		}
+		fmt.Fprintf(w, "\"%s\" = \"%s\"\n", key, currVal)
+	}*/
 }
 
 // HTTP handler displaying config
