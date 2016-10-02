@@ -5,7 +5,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	_ "github.com/wcharczuk/go-chart"
+	"github.com/wcharczuk/go-chart"
 	"html/template"
 	"io"
 	"log"
@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"math"
 )
 
 var Registry = make(map[string]Handler)
@@ -56,7 +57,7 @@ func RegisterHandler(entry Handler) {
 	Registry[entry.Path()] = entry
 	http.Handle(entry.Path(), entry)
 	// handle sub pages for generated content
-	http.Handle(entry.Path() + "/", entry)
+	http.Handle(entry.Path()+"/", entry)
 }
 
 // HTTP handler executing command line
@@ -143,7 +144,46 @@ func (handler CommandHandler) Execute() {
 }
 
 func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
-	fmt.Fprintf(w, "%s\n", prop)
+	xvalues := make([]time.Time, 0)
+	yvalues := make([]float64, 0)
+	var min, max float64 = 0xFFFFFFFF, 0
+
+	// look up time series by name
+	tbl := handler.TS[prop]
+	if data, err := tbl.TopLevel().ReadAll(); err == nil {
+		for _, dp := range data {
+			xvalues = append(xvalues, dp.Tstamp)
+			yvalues = append(yvalues, dp.Val)
+			max = math.Max(max, dp.Val)
+			min = math.Min(min, dp.Val)
+		}
+	}
+	if min == max {
+		max = min+1	
+	}
+
+	graph := chart.Chart{
+		XAxis: chart.XAxis{
+			Style: chart.Style{Show: true},
+		},
+		YAxis: chart.YAxis{
+			Style: chart.Style{Show: true},
+			Range: &chart.ContinuousRange{Min: 0, Max: max},
+		},
+		Series: []chart.Series{
+			chart.TimeSeries{
+				Name: prop,
+				Style: chart.Style{
+					Show:        true,
+					StrokeColor: chart.GetDefaultColor(0),
+				},
+				XValues: xvalues,
+				YValues: yvalues,
+			},
+		},
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	graph.Render(chart.SVG, w)
 }
 
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -159,7 +199,7 @@ func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		AdditionalLines []string
 		Charts          []Chart
 	}
-	
+
 	if relPath, err := filepath.Rel(handler.Path(), req.URL.Path); err == nil {
 		fmt.Printf("URL=%s, relPath=%s\n", req.URL.Path, relPath)
 		if relPath != "." {
@@ -167,7 +207,7 @@ func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 			return
 		}
 	}
-	
+
 	const tmplStr = `
 		<!DOCTYPE html>
 		<html>
