@@ -143,7 +143,7 @@ func (handler CommandHandler) Execute() {
 
 func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
 	w.Header().Set("Content-Type", "image/svg+xml")
-	PlotTimeSeries(w, handler.TS[prop].TopLevel(), prop)
+	PlotTimeSeries(w, []*TimeSeries{handler.TS[prop].TopLevel()}, []string{prop})
 }
 
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -326,8 +326,8 @@ func (handler *CPULoadHandler) Execute() {
 	curr := NewSystemLoad()
 	diff := curr.Diff(handler.Load)
 	rd := diff.ToRelative()
-	fmt.Printf("user=%f, system=%f, idle=%f, total=%d\n",
-		rd.Stats[USER], rd.Stats[SYSTEM], rd.Stats[IDLE], diff.Total())
+	//fmt.Printf("user=%f, system=%f, idle=%f, total=%d\n",
+	//	rd.Stats[USER], rd.Stats[SYSTEM], rd.Stats[IDLE], diff.Total())
 	handler.Load = curr
 
 	if err := handler.UserTS.Add(rd.Stats[USER]); err != nil {
@@ -341,9 +341,6 @@ func (handler *CPULoadHandler) Execute() {
 	}
 }
 
-func (handler CPULoadHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
-}
-
 func (handler *CPULoadHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	const tmplStr = `
 		<!DOCTYPE html>
@@ -353,36 +350,34 @@ func (handler *CPULoadHandler) ServeHTTP(w http.ResponseWriter, req *http.Reques
 			</head>
 			<body>
 				<h1 style="text-align:center"> CPU Load </h1>
-				<h2 style="text-align:center"> User </h2>
-				<img src="{{.UserPath}}" alt="User" style="width:100%"> <br>
-				<h2 style="text-align:center"> System </h2>
-				<img src="{{.SystemPath}}" alt="System" style="width:100%"> <br>
-				<h2 style="text-align:center"> Idle </h2>
-				<img src="{{.IdlePath}}" alt="Idle" style="width:100%"> <br>
+				<h2 style="text-align:center"> Hour </h2>
+				<img src="{{.}}/2" alt="Idle" style="width:100%"> <br>
+				<h2 style="text-align:center"> Day </h2>
+				<img src="{{.}}/1" alt="Idle" style="width:100%"> <br>
+				<h2 style="text-align:center"> Week </h2>
+				<img src="{{.}}/0" alt="Idle" style="width:100%"> <br>
 			</body>
 		</html>	`
 
 	if relPath, err := filepath.Rel(handler.Path(), req.URL.Path); err == nil {
 		if relPath != "." {
+			var level int
+			
 			w.Header().Set("Content-Type", "image/svg+xml")
-			switch {
-			case relPath == "user":
-				PlotTimeSeries(w, handler.UserTS.TopLevel(), "user")
-			case relPath == "system":
-				PlotTimeSeries(w, handler.SystemTS.TopLevel(), "system")
-			case relPath == "idle":
-				PlotTimeSeries(w, handler.IdleTS.TopLevel(), "idle")
+			fmt.Sscan(relPath, &level)
+			if level < len(handler.UserTS.TS) {
+				PlotTimeSeries(w, []*TimeSeries{handler.UserTS.TS[level],
+						                        handler.SystemTS.TS[level],
+						                        handler.IdleTS.TS[level]},
+					          []string{"user", "system", "idle"})
 			}
 			return
 		}
 	}
 	
-	type Page struct{ UserPath, SystemPath, IdlePath string }
-	imgPath := func(prop string) string { return filepath.Join(handler.Path(), prop) }
-	page := Page{UserPath: imgPath("user"), SystemPath: imgPath("system"), IdlePath: imgPath("idle")}
 	if tmpl, err := template.New("command").Parse(tmplStr); err != nil {
 		log.Fatal(err)
-	} else if err := tmpl.Execute(w, page); err != nil {
+	} else if err := tmpl.Execute(w, handler.Path()); err != nil {
 		log.Fatal(err)
 	}
 }
