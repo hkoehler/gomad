@@ -31,6 +31,8 @@ func main() {
 		RegisterHandler(configHandler)
 		rootHandler := NewRootHandler()
 		RegisterHandler(rootHandler)
+		cpuHandler, _ := NewCPULoadHandler()
+		RegisterHandler(cpuHandler)
 	}
 	StartScheduler()
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", Port), nil); err != nil {

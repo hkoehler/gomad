@@ -5,7 +5,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/wcharczuk/go-chart"
 	"html/template"
 	"io"
 	"log"
@@ -17,7 +16,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"math"
 )
 
 var Registry = make(map[string]Handler)
@@ -144,46 +142,8 @@ func (handler CommandHandler) Execute() {
 }
 
 func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
-	xvalues := make([]time.Time, 0)
-	yvalues := make([]float64, 0)
-	var min, max float64 = 0xFFFFFFFF, 0
-
-	// look up time series by name
-	tbl := handler.TS[prop]
-	if data, err := tbl.TopLevel().ReadAll(); err == nil {
-		for _, dp := range data {
-			xvalues = append(xvalues, dp.Tstamp)
-			yvalues = append(yvalues, dp.Val)
-			max = math.Max(max, dp.Val)
-			min = math.Min(min, dp.Val)
-		}
-	}
-	if min == max {
-		max = min+1	
-	}
-
-	graph := chart.Chart{
-		XAxis: chart.XAxis{
-			Style: chart.Style{Show: true},
-		},
-		YAxis: chart.YAxis{
-			Style: chart.Style{Show: true},
-			Range: &chart.ContinuousRange{Min: 0, Max: max},
-		},
-		Series: []chart.Series{
-			chart.TimeSeries{
-				Name: prop,
-				Style: chart.Style{
-					Show:        true,
-					StrokeColor: chart.GetDefaultColor(0),
-				},
-				XValues: xvalues,
-				YValues: yvalues,
-			},
-		},
-	}
 	w.Header().Set("Content-Type", "image/svg+xml")
-	graph.Render(chart.SVG, w)
+	PlotTimeSeries(w, handler.TS[prop].TopLevel(), prop)
 }
 
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -251,24 +211,6 @@ func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 	} else if err := tmpl.Execute(w, page); err != nil {
 		log.Fatal(err)
 	}
-
-	/*fmt.Fprint(w, out)
-	fmt.Fprint(w, "\n")
-	// iterate thru time series associated with properties
-	for key, currVal := range props {
-		fmt.Fprintf(w, "\"%s\"\n", key)
-		tbl := handler.TS[key]
-		// iterate thru all time series levels
-		for i, ts := range tbl.TS {
-			fmt.Fprintf(w, "Level: %d\n", i)
-			if data, err := ts.ReadAll(); err == nil {
-				for _, dp := range data {
-					fmt.Fprintf(w, "\"%v\" = \"%v\"\n", dp.Tstamp, dp.Val)
-				}
-			}
-		}
-		fmt.Fprintf(w, "\"%s\" = \"%s\"\n", key, currVal)
-	}*/
 }
 
 // HTTP handler displaying config
@@ -293,7 +235,158 @@ func (handler ConfigHandler) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	}
 }
 
-// HTTP handler listing all registered handlers
+const (
+	USER      = iota
+	NICE      = iota
+	SYSTEM    = iota
+	IDLE      = iota
+	IOWAIT    = iota
+	IRQ       = iota
+	SOFTIRQ   = iota
+	NUM_STATS = iota
+)
+
+type SystemLoad struct {
+	Stats [NUM_STATS]uint32
+}
+
+type RelativeSystemLoad struct {
+	Stats [NUM_STATS]float64
+}
+
+func NewSystemLoad() (res SystemLoad) {
+	if f, err := os.Open("/proc/stat"); err == nil {
+		defer f.Close()
+		fmt.Fscanf(f, "cpu")
+		for i := 0; i < NUM_STATS; i++ {
+			fmt.Fscanf(f, "%d", &res.Stats[i])
+		}
+	} else {
+		log.Fatal(err)
+	}
+	return
+}
+
+func (curr SystemLoad) Diff(prev SystemLoad) (res SystemLoad) {
+	for i := range curr.Stats {
+		res.Stats[i] = curr.Stats[i] - prev.Stats[i]
+	}
+	return
+}
+
+func (curr SystemLoad) Total() (total uint32) {
+	for _, c := range curr.Stats {
+		total += c
+	}
+	return
+}
+
+func (curr SystemLoad) ToRelative() (res RelativeSystemLoad) {
+	t := curr.Total()
+	for i, stat := range curr.Stats {
+		res.Stats[i] = float64(stat) / float64(t)
+	}
+	return
+}
+
+type CPULoadHandler struct {
+	HandlerImpl
+	UserTS   *TimeSeriesTable
+	SystemTS *TimeSeriesTable
+	IdleTS   *TimeSeriesTable
+	Load     SystemLoad
+}
+
+func timeSeriesPath(url, prop string) string {
+	return filepath.Join(os.TempDir(), "mad", url, prop)
+}
+
+func NewCPULoadHandler() (Handler, error) {
+	var userTS, systemTS, idleTS *TimeSeriesTable
+	var url = "/cpu"
+	var err error
+
+	tsProps := []TimeSeriesProps{{10, 100}, {6, 100}, {60, 100}}
+	if userTS, err = NewTimeSeriesTable(timeSeriesPath(url, "user"), tsProps); err != nil {
+		return nil, err
+	}
+	if systemTS, err = NewTimeSeriesTable(timeSeriesPath(url, "system"), tsProps); err != nil {
+		return nil, err
+	}
+	if idleTS, err = NewTimeSeriesTable(timeSeriesPath(url, "idle"), tsProps); err != nil {
+		return nil, err
+	}
+	pollInterval, _ := time.ParseDuration("1s")
+	return &CPULoadHandler{HandlerImpl: HandlerImpl{"/cpu", "CPU Load", pollInterval},
+		UserTS: userTS, SystemTS: systemTS, IdleTS: idleTS,
+		Load: NewSystemLoad()}, nil
+}
+
+func (handler *CPULoadHandler) Execute() {
+	curr := NewSystemLoad()
+	diff := curr.Diff(handler.Load)
+	rd := diff.ToRelative()
+	fmt.Printf("user=%f, system=%f, idle=%f, total=%d\n",
+		rd.Stats[USER], rd.Stats[SYSTEM], rd.Stats[IDLE], diff.Total())
+	handler.Load = curr
+
+	if err := handler.UserTS.Add(rd.Stats[USER]); err != nil {
+		log.Fatal(err)
+	}
+	if err := handler.SystemTS.Add(rd.Stats[SYSTEM]); err != nil {
+		log.Fatal(err)
+	}
+	if err := handler.IdleTS.Add(rd.Stats[IDLE]); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (handler CPULoadHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
+}
+
+func (handler *CPULoadHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	const tmplStr = `
+		<!DOCTYPE html>
+		<html>
+			<head>
+			<title> CPU Load </title>
+			</head>
+			<body>
+				<h1 style="text-align:center"> CPU Load </h1>
+				<h2 style="text-align:center"> User </h2>
+				<img src="{{.UserPath}}" alt="User" style="width:100%"> <br>
+				<h2 style="text-align:center"> System </h2>
+				<img src="{{.SystemPath}}" alt="System" style="width:100%"> <br>
+				<h2 style="text-align:center"> Idle </h2>
+				<img src="{{.IdlePath}}" alt="Idle" style="width:100%"> <br>
+			</body>
+		</html>	`
+
+	if relPath, err := filepath.Rel(handler.Path(), req.URL.Path); err == nil {
+		if relPath != "." {
+			w.Header().Set("Content-Type", "image/svg+xml")
+			switch {
+			case relPath == "user":
+				PlotTimeSeries(w, handler.UserTS.TopLevel(), "user")
+			case relPath == "system":
+				PlotTimeSeries(w, handler.SystemTS.TopLevel(), "system")
+			case relPath == "idle":
+				PlotTimeSeries(w, handler.IdleTS.TopLevel(), "idle")
+			}
+			return
+		}
+	}
+	
+	type Page struct{ UserPath, SystemPath, IdlePath string }
+	imgPath := func(prop string) string { return filepath.Join(handler.Path(), prop) }
+	page := Page{UserPath: imgPath("user"), SystemPath: imgPath("system"), IdlePath: imgPath("idle")}
+	if tmpl, err := template.New("command").Parse(tmplStr); err != nil {
+		log.Fatal(err)
+	} else if err := tmpl.Execute(w, page); err != nil {
+		log.Fatal(err)
+	}
+}
+
 type RootHandler struct {
 	HandlerImpl
 }
