@@ -306,7 +306,7 @@ func NewCPULoadHandler() (Handler, error) {
 	var url = "/cpu"
 	var err error
 
-	tsProps := []TimeSeriesProps{{10, 100}, {6, 100}, {60, 100}}
+	tsProps := []TimeSeriesProps{{60, 300}, {60, 300}, {60, 240}}
 	if userTS, err = NewTimeSeriesTable(timeSeriesPath(url, "user"), tsProps); err != nil {
 		return nil, err
 	}
@@ -350,11 +350,11 @@ func (handler *CPULoadHandler) ServeHTTP(w http.ResponseWriter, req *http.Reques
 			</head>
 			<body>
 				<h1 style="text-align:center"> CPU Load </h1>
-				<h2 style="text-align:center"> Hour </h2>
+				<h2 style="text-align:center"> Last 5 Minutes </h2>
 				<img src="{{.}}/2" alt="Idle" style="width:100%"> <br>
-				<h2 style="text-align:center"> Day </h2>
+				<h2 style="text-align:center"> Last 5 Hours </h2>
 				<img src="{{.}}/1" alt="Idle" style="width:100%"> <br>
-				<h2 style="text-align:center"> Week </h2>
+				<h2 style="text-align:center"> Last 10 Days </h2>
 				<img src="{{.}}/0" alt="Idle" style="width:100%"> <br>
 			</body>
 		</html>	`
