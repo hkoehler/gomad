@@ -5,8 +5,10 @@
 		"Name" : "OS Version",
 		"Cmd" : "uname -a",
 		"URL" : "/os/uname",
-		"Regex" : "^(\\w+)\\s+\\S+\\s+(\\S+)",
-		"Submatches" : ["os", "version"]
+		"Properties" : [
+			{"Name" : "OS", "Regex" : "^(\\w+)"},
+			{"Name" : "Version", "Regex" : "^\\w+\\s+\\S+\\s+(\\S+)"}
+		]
 	},
 	{
 		"Name" : "OS Uptime",
@@ -16,14 +18,17 @@
 	},
 	{
 		"Name" : "OS vmstat",
-		"Cmd" : "vmstat",
+		"Cmd" : "vmstat -s -SK",
 		"URL" : "/os/vmstat",
-		"Regex" : "\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\n",
-		"Submatches" : ["user", "system", "idle", "wait", "stolen"],
-		"PollInterval" : "10s",
-		"TimeSeries" : [{"RollUp" : 6, "Capacity" : 100},
-						{"RollUp" : 10, "Capacity" : 100},
-						{"RollUp" : 6, "Capacity" : 100}]
+		"PollInterval" : "1s",
+		"Properties" : [
+			{"Name" : "Used", "Regex" : "(\\d+) K used memory"},
+			{"Name" : "Free", "Regex" : "(\\d+) K free memory"},
+			{"Name" : "Buffer", "Regex" : "(\\d+) K buffer memory"}
+		],
+		"Charts" : [
+			{"Name" : "Memory", "Properties" : ["Used", "Free", "Buffer"]}
+		]
 	},
 	{
 		"Name" : "OS iostat",

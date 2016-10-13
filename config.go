@@ -14,15 +14,24 @@ type Config struct {
 	Handlers []*HandlerConfig
 }
 
+type PropertyConfig struct {
+	Name	string
+	Regex	string
+}
+
+type ChartConfig struct {
+	Name		string
+	Properties []string
+}
+
 type HandlerConfig struct {
 	Type         string
 	Name         string
 	Cmd          string
 	URL          string
-	Regex        string
-	Submatches   []string
 	PollInterval string
-	TimeSeries   []TimeSeriesProps
+	Properties   []PropertyConfig
+	Charts		 []ChartConfig
 }
 
 func (conf HandlerConfig) String() string {

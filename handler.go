@@ -58,44 +58,52 @@ func RegisterHandler(entry Handler) {
 	http.Handle(entry.Path()+"/", entry)
 }
 
+// Property definition w/ regex
+type Property struct {
+	Regex *regexp.Regexp
+	TS    *TimeSeriesTable
+}
+
 // HTTP handler executing command line
 type CommandHandler struct {
 	HandlerImpl
-	CmdLine    string
-	Regex      *regexp.Regexp
-	Submatches []string
-	// map properties to time series
-	TS map[string]*TimeSeriesTable
+	CmdLine string
+	// map property name to regex and time series
+	Properties map[string]Property
+	Charts     []ChartConfig
 }
 
+// compile regular expression and create time series tables
 func NewCommandHandler(conf HandlerConfig) (Handler, error) {
-	if re, err := regexp.Compile(conf.Regex); err != nil {
-		return nil, err
-	} else {
-		var pollInterval time.Duration
-		var tsMap = make(map[string]*TimeSeriesTable)
+	var pollInterval time.Duration
+	var propMap = make(map[string]Property)
+
+	for _, propConfig := range conf.Properties {
+		if re, err := regexp.Compile(propConfig.Regex); err != nil {
+			return nil, err
+		} else {
+			prop := propConfig.Name
+			tsPath := filepath.Join(os.TempDir(), "mad", conf.URL, prop)
+			tsProps := []TimeSeriesProps{{60, 300}, {60, 300}, {60, 240}}
+			if ts, err := NewTimeSeriesTable(tsPath, tsProps); err != nil {
+				return nil, err
+			} else {
+				propMap[prop] = Property{Regex: re, TS: ts}
+			}
+		}
+	}
+
+	if conf.PollInterval != "" {
 		var err error
 
-		if conf.PollInterval != "" {
-			if pollInterval, err = time.ParseDuration(conf.PollInterval); err != nil {
-				return nil, err
-			}
+		pollInterval, err = time.ParseDuration(conf.PollInterval)
+		if err != nil {
+			return nil, err
 		}
-
-		if conf.TimeSeries != nil {
-			for _, prop := range conf.Submatches {
-				tsPath := filepath.Join(os.TempDir(), "mad", conf.URL, prop)
-				if ts, err := NewTimeSeriesTable(tsPath, conf.TimeSeries); err != nil {
-					return nil, err
-				} else {
-					tsMap[prop] = ts
-				}
-			}
-		}
-		return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name, pollInterval},
-				CmdLine: conf.Cmd, Regex: re, Submatches: conf.Submatches, TS: tsMap},
-			nil
 	}
+	return &CommandHandler{HandlerImpl: HandlerImpl{conf.URL, conf.Name, pollInterval},
+			CmdLine: conf.Cmd, Properties: propMap, Charts: conf.Charts},
+		nil
 }
 
 func NewHandler(conf HandlerConfig) (Handler, error) {
@@ -110,40 +118,50 @@ func NewHandler(conf HandlerConfig) (Handler, error) {
 }
 
 func (handler CommandHandler) Stat() (string, map[string]string) {
-	cmd := strings.Split(handler.CmdLine, " ")
-	if cmdOut, err := exec.Command(cmd[0], cmd[1:]...).Output(); err == nil {
-		var attrs = make(map[string]string)
+	var err error
+	// map property name to current value
+	var props = make(map[string]string)
+	// command output
+	var out []byte
 
-		out := string(cmdOut)
-		if handler.Regex.MatchString(out) {
-			subMatches := handler.Regex.FindStringSubmatch(out)
-			subMatches = subMatches[1:]
-			for i, m := range subMatches {
-				attrs[handler.Submatches[i]] = m
-			}
-		}
-		return out, attrs
-	} else {
+	// execute command
+	cmd := strings.Split(handler.CmdLine, " ")
+	out, err = exec.Command(cmd[0], cmd[1:]...).Output()
+	if err != nil {
 		return fmt.Sprintf("Error executing command line \"%s\": %v\n", handler.CmdLine, err), nil
 	}
+
+	// parse/grep property values from command output
+	lines := strings.Split(string(out), "\n")
+	for name, prop := range handler.Properties {
+		for _, line := range lines {
+			subMatches := prop.Regex.FindStringSubmatch(line)
+			// we only expect one group in regex
+			if len(subMatches) == 2 {
+				props[name] = subMatches[1]
+			}
+		}
+	}
+	return string(out), props
 }
 
 // query properties and store them in time series logs
 func (handler CommandHandler) Execute() {
 	_, props := handler.Stat()
+	fmt.Println(props)
 	for key, val := range props {
 		var floatVal float64
 
 		// map property name to time series
-		ts := handler.TS[key]
+		prop := handler.Properties[key]
 		fmt.Sscanf(val, "%f", &floatVal)
-		ts.Add(floatVal)
+		prop.TS.Add(floatVal)
 	}
 }
 
 func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
 	w.Header().Set("Content-Type", "image/svg+xml")
-	PlotTimeSeries(w, []*TimeSeries{handler.TS[prop].TopLevel()}, []string{prop})
+	PlotTimeSeries(w, []*TimeSeries{handler.Properties[prop].TS.TopLevel()}, []string{prop})
 }
 
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -362,19 +380,19 @@ func (handler *CPULoadHandler) ServeHTTP(w http.ResponseWriter, req *http.Reques
 	if relPath, err := filepath.Rel(handler.Path(), req.URL.Path); err == nil {
 		if relPath != "." {
 			var level int
-			
+
 			w.Header().Set("Content-Type", "image/svg+xml")
 			fmt.Sscan(relPath, &level)
 			if level < len(handler.UserTS.TS) {
 				PlotTimeSeries(w, []*TimeSeries{handler.UserTS.TS[level],
-						                        handler.SystemTS.TS[level],
-						                        handler.IdleTS.TS[level]},
-					          []string{"user", "system", "idle"})
+					handler.SystemTS.TS[level],
+					handler.IdleTS.TS[level]},
+					[]string{"user", "system", "idle"})
 			}
 			return
 		}
 	}
-	
+
 	if tmpl, err := template.New("command").Parse(tmplStr); err != nil {
 		log.Fatal(err)
 	} else if err := tmpl.Execute(w, handler.Path()); err != nil {
