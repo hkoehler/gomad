@@ -159,16 +159,28 @@ func (handler CommandHandler) Execute() {
 	}
 }
 
-func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, prop string) {
+func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, chartName string) {
 	w.Header().Set("Content-Type", "image/svg+xml")
-	PlotTimeSeries(w, []*TimeSeries{handler.Properties[prop].TS.TopLevel()}, []string{prop})
+	var ts = make([]*TimeSeries, 0)
+	var legend = make([]string, 0)
+
+	for _, chart := range handler.Charts {
+		if chart.Name == chartName {
+			for _, prop := range chart.Properties {
+				ts = append(ts, handler.Properties[prop].TS.TopLevel())
+				legend = append(legend, prop)
+			}
+			break
+		}
+	}
+	PlotTimeSeries(w, ts, legend)
 }
 
 func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	type Chart struct {
-		Path     string
-		Property string
+		Path string
+		Name string
 	}
 
 	type Page struct {
@@ -204,18 +216,18 @@ func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 					</tr>
 				</table>
 				{{range .Charts}}
-				<h2 style="text-align:center"> {{.Property}} </h2>
-				<img src="{{.Path}}" alt="{{.Property}}" style="width:100%"> <br>
+				<h2 style="text-align:center"> {{.Name}} </h2>
+				<img src="{{.Path}}" alt="{{.Name}}" style="width:100%"> <br>
 				{{end}}
 			</body>
 		</html>
 	`
 
-	out, props := handler.Stat()
+	out, _ := handler.Stat()
 	charts := make([]Chart, 0)
-	for prop, _ := range props {
-		imgPath := filepath.Join(handler.Path(), prop)
-		charts = append(charts, Chart{Path: imgPath, Property: prop})
+	for _, chart := range handler.Charts {
+		imgPath := filepath.Join(handler.Path(), chart.Name)
+		charts = append(charts, Chart{Path: imgPath, Name: chart.Name})
 	}
 	lines := strings.Split(out, "\n")
 	page := Page{Cmd: handler.CmdLine,
