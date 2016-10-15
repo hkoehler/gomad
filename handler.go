@@ -159,15 +159,24 @@ func (handler CommandHandler) Execute() {
 	}
 }
 
-func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, chartName string) {
+func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Request, relPath string) {
 	w.Header().Set("Content-Type", "image/svg+xml")
 	var ts = make([]*TimeSeries, 0)
 	var legend = make([]string, 0)
-
+	var level int
+	
+	comps := strings.Split(relPath, "/")
+	if len(comps) != 2 {
+		fmt.Fprintf(w, "Invalid Path")
+		return
+	}
+	
+	chartName, levelStr := comps[0], comps[1]
+	fmt.Sscanf(levelStr, "%d", &level)
 	for _, chart := range handler.Charts {
 		if chart.Name == chartName {
 			for _, prop := range chart.Properties {
-				ts = append(ts, handler.Properties[prop].TS.TopLevel())
+				ts = append(ts, handler.Properties[prop].TS.TS[level])
 				legend = append(legend, prop)
 			}
 			break
@@ -217,7 +226,12 @@ func (handler CommandHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 				</table>
 				{{range .Charts}}
 				<h2 style="text-align:center"> {{.Name}} </h2>
-				<img src="{{.Path}}" alt="{{.Name}}" style="width:100%"> <br>
+				<h3 style="text-align:center"> Last 5 minutes </h3>
+				<img src="{{.Path}}/2" alt="{{.Name}}" style="width:100%"> <br>
+				<h3 style="text-align:center"> Last 5 hours </h3>
+				<img src="{{.Path}}/1" alt="{{.Name}}" style="width:100%"> <br>
+				<h3 style="text-align:center"> Last 10 days </h3>
+				<img src="{{.Path}}/0" alt="{{.Name}}" style="width:100%"> <br>
 				{{end}}
 			</body>
 		</html>
