@@ -15,12 +15,12 @@ type Config struct {
 }
 
 type PropertyConfig struct {
-	Name	string
-	Regex	string
+	Name  string
+	Regex string
 }
 
 type ChartConfig struct {
-	Name		string
+	Name       string
 	Properties []string
 }
 
@@ -31,7 +31,7 @@ type HandlerConfig struct {
 	URL          string
 	PollInterval string
 	Properties   []PropertyConfig
-	Charts		 []ChartConfig
+	Charts       []ChartConfig
 }
 
 func (conf HandlerConfig) String() string {

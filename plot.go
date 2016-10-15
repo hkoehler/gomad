@@ -1,10 +1,10 @@
-package main 
+package main
 
 import (
-	"time"
 	"io"
 	"math"
-	
+	"time"
+
 	"github.com/wcharczuk/go-chart"
 )
 
@@ -27,19 +27,19 @@ func chartSeries(i int, ts *TimeSeries, prop string, max *float64) chart.Series 
 		},
 		XValues: xvalues,
 		YValues: yvalues,
-	}	
+	}
 }
 
 func PlotTimeSeries(w io.Writer, ts []*TimeSeries, prop []string) {
 	var max float64 = 1
-	series := make([]chart.Series, 0,)
+	series := make([]chart.Series, 0)
 
 	for i := range ts {
 		series = append(series, chartSeries(i, ts[i], prop[i], &max))
 	}
 	graph := chart.Chart{
 		XAxis: chart.XAxis{
-			Style: chart.Style{Show: true},
+			Style:          chart.Style{Show: true},
 			ValueFormatter: chart.TimeMinuteValueFormatter,
 		},
 		YAxis: chart.YAxis{
@@ -48,10 +48,10 @@ func PlotTimeSeries(w io.Writer, ts []*TimeSeries, prop []string) {
 		},
 		Series: series,
 	}
-	if (len(ts) > 1) {
-	    graph.Elements = []chart.Renderable{
-	        chart.Legend(&graph),
-	    }	
+	if len(ts) > 1 {
+		graph.Elements = []chart.Renderable{
+			chart.Legend(&graph),
+		}
 	}
 	graph.Render(chart.SVG, w)
 }

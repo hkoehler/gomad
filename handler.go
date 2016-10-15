@@ -164,13 +164,13 @@ func (handler CommandHandler) ServeChart(w http.ResponseWriter, req *http.Reques
 	var ts = make([]*TimeSeries, 0)
 	var legend = make([]string, 0)
 	var level int
-	
+
 	comps := strings.Split(relPath, "/")
 	if len(comps) != 2 {
 		fmt.Fprintf(w, "Invalid Path")
 		return
 	}
-	
+
 	chartName, levelStr := comps[0], comps[1]
 	fmt.Sscanf(levelStr, "%d", &level)
 	for _, chart := range handler.Charts {
