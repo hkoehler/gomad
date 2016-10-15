@@ -32,7 +32,7 @@ func TestMarshalling(t *testing.T) {
 		dec := gob.NewDecoder(file)
 		dec.Decode(&dp2)
 		if dp != dp2 {
-			t.Fatal("encoded and decoded data points don't match: %v vs %v", dp, dp2)
+			t.Fatal(fmt.Sprintf("encoded and decoded data points don't match: %v vs %v", dp, dp2))
 		}
 	}
 }
@@ -67,7 +67,7 @@ func TestTimeSeriesLog(t *testing.T) {
 		// check test data
 		for i := 0; i < 1000; i++ {
 			if data[i].Val != float64(i) {
-				t.Fatalf("Expected val = %d got %d\n", i, data[i].Val)
+				t.Fatalf("Expected val = %d got %f\n", i, data[i].Val)
 			}
 		}
 	}

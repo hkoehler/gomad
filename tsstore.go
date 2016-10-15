@@ -42,7 +42,7 @@ func NewTimeSeriesLog(path string) (*TimeSeriesLog, error) {
 
 // Stringer interface
 func (log *TimeSeriesLog) String() string {
-	return fmt.Sprintf("path=%s, file=%d, enc=%s", log.path, log.file.Fd(), log.enc)
+	return fmt.Sprintf("path=%s, file=%d, enc=%v", log.path, log.file.Fd(), log.enc)
 }
 
 // append new record to log file

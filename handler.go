@@ -261,7 +261,7 @@ func (handler ConfigHandler) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	if f, err := os.Open(handler.ConfigPath); err == nil {
 		io.Copy(w, f)
 	} else {
-		fmt.Fprintf(w, "Couldn't open %s: %v", handler.Path, err)
+		fmt.Fprintf(w, "Couldn't open %s: %v", handler.Path(), err)
 	}
 }
 
